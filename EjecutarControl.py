@@ -12,7 +12,7 @@ st.title("Control GHI")
 st.write("Presiona el botón para actualizar los datos ingresados")
 
 # Ruta del script original
-SCRIPT_PATH = Path(__file__).parent / "ControlHGI.py"
+SCRIPT_PATH = Path(__file__).parent / "ControlGHI.py"
 
 # Nombre de archivo que tu script original espera
 JSON_FILENAME = "Llave_JSON.json"
@@ -58,6 +58,7 @@ if st.button("Actualizar Datos"):
                     JSON_PATH.unlink()
             except Exception:
                 pass
+
 
 
 
