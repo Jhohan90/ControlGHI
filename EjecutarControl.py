@@ -59,12 +59,4 @@ if st.button("Actualizar Datos"):
             except Exception:
                 pass
 
-        # Mostrar logs capturados
-        out, err = out_buf.getvalue().strip(), err_buf.getvalue().strip()
-        if out:
-            st.subheader("Salida (stdout)")
-            st.code(out)
-        if err:
-            st.subheader("Errores/Advertencias (stderr)")
-            st.code(err)
 
