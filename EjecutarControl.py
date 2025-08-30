@@ -9,7 +9,7 @@ import traceback
 
 st.set_page_config(page_title="Control HGI", page_icon="📊", layout="wide")
 st.title("Control HGI")
-st.write("Presiona el botón para ejecutar actualizar los datos ingresados")
+st.write("Presiona el botón para actualizar los datos ingresados")
 
 # Ruta del script original
 SCRIPT_PATH = Path(__file__).parent / "ControlHGI.py"
@@ -58,5 +58,6 @@ if st.button("Actualizar Datos"):
                     JSON_PATH.unlink()
             except Exception:
                 pass
+
 
 
