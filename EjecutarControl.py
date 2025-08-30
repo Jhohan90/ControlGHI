@@ -8,8 +8,8 @@ import json
 import traceback
 
 st.set_page_config(page_title="Control HGI", page_icon="📊", layout="wide")
-st.title("App de Control HGI")
-st.write("Presiona el botón para ejecutar tu script original.")
+st.title("Control HGI")
+st.write("Presiona el botón para ejecutar actualizar los datos ingresados")
 
 # Ruta del script original
 SCRIPT_PATH = Path(__file__).parent / "ControlHGI.py"
@@ -32,11 +32,11 @@ def escribir_llave_desde_secrets():
     data = dict(st.secrets["google_service_account"])
     JSON_PATH.write_text(json.dumps(data), encoding="utf-8")
 
-if st.button("Actualizar Controles"):
+if st.button("Actualizar Datos"):
     if not SCRIPT_PATH.exists():
         st.error(f"No se encontró el archivo: {SCRIPT_PATH}")
     else:
-        st.info("Ejecutando script... esto puede tardar algunos minutos.")
+        st.info("Ejecutando actualización... esto puede tardar algunos minutos.")
         out_buf, err_buf = StringIO(), StringIO()
 
         try:
@@ -67,3 +67,4 @@ if st.button("Actualizar Controles"):
         if err:
             st.subheader("Errores/Advertencias (stderr)")
             st.code(err)
+
