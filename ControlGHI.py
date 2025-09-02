@@ -942,6 +942,11 @@ insumos_nuevos = respuestas_insumos[respuestas_insumos['Clasificación/Tipo Acti
 # Descartar lo que item este vacio
 insumos_nuevos = insumos_nuevos[insumos_nuevos['Item'] != '']
 
+# Descartar posibles duplicados en los insumos
+insumos_nuevos = insumos_nuevos.drop_duplicates(subset=['Marca temporal', 'Fecha Actividad', 'Mes Proyecto',
+                                                        'Mes del Lote', 'Clasificación/Tipo Actividad', 'Item',
+                                                        'Ciclo', 'Invernadero', 'Observaciones', 'Cantidad Usada por Item'])
+
 # Validar si no hay nuevas respuestas
 if insumos_nuevos.empty:
   
@@ -1635,4 +1640,5 @@ write_range(spreadsheet_id=spreadsheet_id, sheet_name='Ventas', dataframe=ventas
 ########################################################################################################################
 
 # #print(ventas_consolidado)
+
 
