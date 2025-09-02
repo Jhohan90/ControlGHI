@@ -1011,12 +1011,12 @@ else:
   # Crear dicionario para reemplazar palabras para el item
   errores = ['FOSS61', 'CENTAURO', 'HUMUS ALFA', 'CALCINIT', 'SULFATO POTASIO', 'SULFATO DE MAGNESIO', 'SULFATO MAGNESIO',
              'ÁTOMIK', 'REBROTE', 'TRIVIA', 'CARBENDAZIM', 'FÓRUM', 'BELT', 'SUMAG', '10 20 20', 'SABERSOIL', 'SAFER SOIL',
-             'HUMUS', 'CABRIOTOP', 'CIROMEX', 'KZYME', 'CIPEMETRINA', 'DIFECOL']
+             'HUMUS', 'CABRIOTOP', 'CIROMEX', 'KZYME', 'CIPEMETRINA', 'DIFECOL', 'CYMOCEB']
 
   # Crear listado con palabras correctas
   aciertos = ['FOSS 61', 'CENTAURO 720', 'HUMUS ALFA 15', 'YARA CALCINIT', 'SULFATO DE POTASIO', 'SULFATO DE MAGNESIO TÉCNICO', 'SULFATO DE MAGNESIO TÉCNICO',
               'ATOMIK', 'REBROTE 10-50-8', 'TRIVIA WP', 'CARBENDAZIN', 'FORUM 500', 'BELT SC', 'SUMAGGRANULADO', '10-20-20', 'SAFERSOIL', 'SAFERSOIL',
-              'HUMUS ALFA 15', 'CABRIO TOP', 'CIROMEX BRIO', 'KZIME', 'CIPERMETRINA', 'DIFECOL 250']
+              'HUMUS ALFA 15', 'CABRIO TOP', 'CIROMEX BRIO', 'KZIME', 'CIPERMETRINA', 'DIFECOL 250', 'CYMOZEB']
 
 
   # Hacer reemplazo de listados
@@ -1635,3 +1635,4 @@ write_range(spreadsheet_id=spreadsheet_id, sheet_name='Ventas', dataframe=ventas
 ########################################################################################################################
 
 # #print(ventas_consolidado)
+
