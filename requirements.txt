@@ -4,4 +4,5 @@ numpy
 google-auth
 google-api-python-client
 openpyxl
+streamlit-js-eval
 python-dateutil
