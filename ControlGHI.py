@@ -353,7 +353,7 @@ respuestas_jornales['Pagado a:'] = respuestas_jornales['Pagado a:'].replace(['Fe
                                                                              'Felipe Perez','Felipe Perez', 'Paola', 'Felipe Perez', 'Felipe Perez'])
 
 # Crear columna Ciclo
-respuestas_jornales['Ciclo'] = 'Ciclo ' + respuestas_jornales['Ciclo (solo número)']
+respuestas_jornales['Ciclo'] = 'CICLO ' + respuestas_jornales['Ciclo (solo número)']
 
 # Crear columna de mes, temporalmente
 respuestas_jornales['Mes'] = respuestas_jornales['Fecha Actividad'].str[-7:]
@@ -763,7 +763,7 @@ for numero in numericas2:
   respuestas_compras[numero] = pd.to_numeric(respuestas_compras[numero])
   
 # Crear columna Ciclo
-respuestas_compras['Ciclo'] = 'Ciclo ' + respuestas_compras['Ciclo (solo numero)']
+respuestas_compras['Ciclo'] = 'CICLO ' + respuestas_compras['Ciclo (solo numero)']
 
 # Renombrar columna
 respuestas_compras.rename(columns={'Cantidad Comprada (No usar separador de mil, para decimales usar punto)':'Cantidad Comprada/Aplicada',
@@ -1640,5 +1640,6 @@ write_range(spreadsheet_id=spreadsheet_id, sheet_name='Ventas', dataframe=ventas
 ########################################################################################################################
 
 # #print(ventas_consolidado)
+
 
 
