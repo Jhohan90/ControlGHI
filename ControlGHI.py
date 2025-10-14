@@ -743,9 +743,6 @@ clear_range(spreadsheet_id=spreadsheet_id, sheet_name='Jornales')
 # Escribir df en hoja Google Sheets
 write_range(spreadsheet_id=spreadsheet_id, sheet_name='Jornales', dataframe=jornales_consolidado, include_headers=True)
 
-# ########################################################################################################################
-
-# print(jornales_consolidado)
 
 #############################################################################################################                                          
 #############################          TRATAMIENTO PARA INSUMOS              ################################
@@ -929,7 +926,6 @@ clear_range(spreadsheet_id=spreadsheet_id, sheet_name='Inventario')
 # Escribir df en hoja Google Sheets
 write_range(spreadsheet_id=spreadsheet_id, sheet_name='Inventario', dataframe=inventario, include_headers=True)
 
-# # print(inventario)
 
 ##############################################      INSUMOS APLICADOS     ##############################################
 
@@ -1205,9 +1201,6 @@ else:
   # Escribir df en hoja Google Sheets
   write_range(spreadsheet_id=spreadsheet_id, sheet_name='Insumos', dataframe=insumos_total, include_headers=True)
 
-  # ########################################################################################################################
-
-  # print(insumos_total)
 
 
   ############################################        ACTUALIZAR SHEET INVENTARIO     ##############################
@@ -1262,10 +1255,6 @@ else:
 
   # Escribir df en hoja Google Sheets
   write_range(spreadsheet_id=spreadsheet_id, sheet_name='Inventario', dataframe=inventario, include_headers=True)
-
-  # ########################################################################################################################
-
-  # print(inventario)
 
 
 #############################################################################################################                                          
@@ -1416,172 +1405,166 @@ for numero3 in numericas_3:
 # Convertir 'Fecha Cosecha' a datetime
 ventas_historia['Fecha Cosecha'] = pd.to_datetime(ventas_historia['Fecha Cosecha'], format='%d/%m/%Y')
 
-# Crear df actividades con base a la fecha y actividades de jornales
-actividades = jornales[['Fecha Actividad', 'Lote', 'Invernadero', 'Clasificación/Tipo Actividad']]
+##############################################################################################################
 
-# Filtrar las actividades para obtener solo aquellas que corresponden a Erradicación Plantas
-actividades = actividades[actividades['Clasificación/Tipo Actividad'] == 'Erradicación Plantas'].drop_duplicates()
+# Unir historico con ventas actuales
+ventas_total = pd.concat([ventas_historia, ventas])
+
+# Crear df actividades con base a la fecha y actividades de jornales
+actividades = jornales_consolidado[['Fecha Actividad', 'Lote', 'Invernadero', 'Clasificación/Tipo Actividad']]
+
+# Filtrar las actividades para obtener solo aquellas que corresponden a Erradicación Plantas o siembra plantas
+actividades = actividades[
+    actividades['Clasificación/Tipo Actividad'].isin(['Erradicación Plantas', 'Siembra plantas'])
+].drop_duplicates()
 
 # Renombrar columna d efecha d eactividad a fecha de cosecha para el merge
 actividades.rename(columns={'Fecha Actividad': 'Fecha Cosecha'}, inplace=True)
 
-# Asignar la actividad de recoleccion a ventas historico
-ventas_historia = pd.merge(ventas_historia, actividades, on =['Fecha Cosecha', 'Lote', 'Invernadero'], how='left')
+# Convertir 'Fecha Cosecha' a datetime
+actividades['Fecha Cosecha'] = pd.to_datetime(actividades['Fecha Cosecha'], format='%d/%m/%Y')
 
-# Llenar nulos de actividad con 'Sin Cosechar'
-ventas_historia['Clasificación/Tipo Actividad'] = ventas_historia['Clasificación/Tipo Actividad'].fillna('Sin Cosechar')
+# Asignar la actividad de erradicacion a las a ventas historico
+ventas_total = pd.merge(ventas_total, actividades, on =['Fecha Cosecha', 'Lote', 'Invernadero'], how='outer')
 
-
-# Asignar la actividad de recoleccion a ventas actual
-ventas = pd.merge(ventas, actividades, on =['Fecha Cosecha', 'Lote', 'Invernadero'], how='left')
-
-# Llenar nulos de actividad con 'Sin Cosechar'
-ventas['Clasificación/Tipo Actividad'] = ventas['Clasificación/Tipo Actividad'].fillna('Sin Cosechar')
+# Llenar nulos de actividad con 'Sin Actividad'
+ventas_total['Clasificación/Tipo Actividad'] = ventas_total['Clasificación/Tipo Actividad'].fillna('Sin Actividad')
 
 
-######################      OBTENER BASES DEL HISTORICO PARA INICIAR    ########################
+# === Configura aquí los literales exactos de tus actividades (ajusta si difieren) ===
+ERRAD = "erradicacion plantas"
+SIEMBRA = "siembra plantas"
 
-
-# =========================
-# Utilidades
-# =========================
+# ---------------- utilidades ----------------
 def lunes_de(fecha: pd.Timestamp) -> pd.Timestamp:
-    """Devuelve el lunes (weekday=0) de la semana de 'fecha'."""
-    if pd.isna(fecha): 
+    if pd.isna(fecha):
         return fecha
-    return fecha - pd.Timedelta(days=fecha.weekday())
+    return fecha - pd.Timedelta(days=fecha.weekday())  # lunes=0
 
-def semanas_transcurridas_lunes_domingo(start: pd.Timestamp, end: pd.Timestamp) -> int:
-    """
-    Cuántas semanas completas (lunes–domingo) hay entre start y end.
-    Si están en la misma semana (mismo lunes de referencia), devuelve 0.
-    """
-    if pd.isna(start) or pd.isna(end):
+def semanas_entre_lunes(m_start: pd.Timestamp, m_end: pd.Timestamp) -> int:
+    if pd.isna(m_start) or pd.isna(m_end):
         return 0
-    start_mon = lunes_de(start)
-    end_mon   = lunes_de(end)
-    diff_days = (end_mon - start_mon).days
-    return max(0, diff_days // 7)
+    return max(0, int((m_end - m_start).days // 7))
 
-def quitar_acentos(texto):
-    if not isinstance(texto, str):
-        return texto
-    nfkd = unicodedata.normalize("NFKD", texto)
+def sin_acentos(x: str) -> str:
+    if not isinstance(x, str):
+        return x
+    nfkd = unicodedata.normalize("NFKD", x)
     return "".join([c for c in nfkd if not unicodedata.combining(c)])
 
-TARGET_RECOLECCION = quitar_acentos('Erradicación Plantas').lower()
+def norm_actividad(x: str) -> str:
+    x = "" if pd.isna(x) else str(x)
+    x = sin_acentos(x).strip().lower()
+    x = " ".join(x.split())
+    return x
 
-# =========================
-# 1) Historial
-# =========================
-# Asegurar fechas y ordenar
-ventas_historia['Fecha Cosecha'] = pd.to_datetime(
-    ventas_historia['Fecha Cosecha'], format='%d/%m/%Y', errors='coerce'
+# ---------------- motor de llenado ----------------
+def llenar_semana_ciclo(df: pd.DataFrame) -> pd.DataFrame:
+    # Copia para no mutar el original
+    df = df.copy()
+
+    # Asegura tipos y columnas auxiliares
+    df['Fecha Cosecha'] = pd.to_datetime(df['Fecha Cosecha'], errors='coerce')
+    df['__monday__'] = df['Fecha Cosecha'].apply(lunes_de)
+    df['__act__'] = df['Clasificación/Tipo Actividad'].apply(norm_actividad)
+
+    # Orden estable: por invernadero, lote y fecha
+    df = df.sort_values(['Invernadero', 'Lote', 'Fecha Cosecha']).reset_index(drop=True)
+
+    resultado = []
+
+    for (inv, lote), g in df.groupby(['Invernadero', 'Lote'], sort=False):
+        g = g.copy()
+
+        mode = 'fallow'                 # 'fallow' -> 0; 'growing' -> 0,1,2...
+        epoch_monday = None             # lunes base para calcular semanas
+        freeze_zero_until_monday = None # siembra: mantener 0 hasta este lunes
+        current_week = None
+
+        filled = []
+
+        for _, row in g.iterrows():
+            monday = row['__monday__']
+            act = row['__act__']
+            wk_known = row['Semana del Ciclo Productivo']
+            wk_known = None if pd.isna(wk_known) else int(wk_known)
+
+            # Transiciones por actividad
+            if act == ERRAD:
+                # Fin de ciclo: semana = 0 desde aquí hasta nueva siembra y lunes siguiente
+                mode = 'fallow'
+                epoch_monday = None
+                freeze_zero_until_monday = None
+                current_week = 0
+
+            if act == SIEMBRA:
+                # Desde siembra hasta el próximo lunes: 0; luego arranca conteo
+                freeze_zero_until_monday = monday + pd.Timedelta(days=7)
+                mode = 'fallow'
+                epoch_monday = None
+                current_week = 0
+
+            # Si ya pasó el lunes posterior a siembra, comienza a crecer
+            if freeze_zero_until_monday is not None and monday >= freeze_zero_until_monday:
+                epoch_monday = freeze_zero_until_monday
+                mode = 'growing'
+                freeze_zero_until_monday = None
+
+            # Si hay valor conocido, usarlo como ancla para continuidad
+            if wk_known is not None:
+                epoch_monday = monday - pd.Timedelta(days=7 * wk_known)
+                # Si el valor conocido es >0, estamos creciendo; si es 0, respetamos modo actual (puede ser fallow)
+                if wk_known > 0:
+                    mode = 'growing'
+                current_week = wk_known
+                filled.append(wk_known)
+                continue
+
+            # Calcular si no hay valor conocido
+            if mode == 'fallow':
+                current_week = 0
+                filled.append(0)
+            else:
+                # growing
+                if epoch_monday is None:
+                    # Sin ancla previa: inicia en 0 desde el lunes actual
+                    epoch_monday = monday
+                    current_week = 0
+                    filled.append(0)
+                else:
+                    w = semanas_entre_lunes(epoch_monday, monday)
+                    current_week = int(w)
+                    filled.append(current_week)
+
+        g['_SemanaFill_'] = filled
+        # Solo completar vacíos; preservar lo existente
+        g['Semana del Ciclo Productivo'] = g['Semana del Ciclo Productivo'].fillna(g['_SemanaFill_'])
+        resultado.append(g)
+
+    res = pd.concat(resultado, axis=0).sort_index()
+    # Limpieza
+    res = res.drop(columns=['__monday__', '__act__', '_SemanaFill_'])
+    return res
+
+# Forzar formato numerico
+ventas_total['Semana del Ciclo Productivo'] = pd.to_numeric(
+    ventas_total['Semana del Ciclo Productivo'], errors='coerce'
 )
-ventas_historia.sort_values(by=['Lote', 'Invernadero', 'Fecha Cosecha'], inplace=True)
 
-# Normalizar actividad en historial
-ventas_historia['actividad_norm'] = (
-    ventas_historia['Clasificación/Tipo Actividad']
-    .astype(str).str.strip().str.lower().apply(quitar_acentos)
-)
+# Aplicar funcion
+ventas_consolidado = llenar_semana_ciclo(ventas_total)
 
-def resumen_anchor(grp: pd.DataFrame) -> pd.Series:
-    """
-    Devuelve sólo el ANCLA (lunes) del último reset:
-      - Si hay recolección en el historial: ancla = lunes(fecha_última_recolección)
-      - Si no hay, ancla = lunes(fecha_mínima_del_grupo) para iniciar desde 0
-    """
-    grp = grp.copy()
-    grp.sort_values('Fecha Cosecha', inplace=True)
-    reco_fechas = grp.loc[grp['actividad_norm'] == TARGET_RECOLECCION, 'Fecha Cosecha']
-    if not reco_fechas.empty:
-        anchor = lunes_de(reco_fechas.max())
-    else:
-        # Sin recolecciones históricas → usamos la primera fecha como referencia
-        anchor = lunes_de(grp['Fecha Cosecha'].min())
-    return pd.Series({'AnchorMonday': anchor})
+# Descartar filas donde no hubo compra
+ventas_consolidado = ventas_consolidado[~ventas_consolidado['Mes Proyecto'].isnull()]
 
-resultados = ventas_historia.groupby(['Lote', 'Invernadero'], group_keys=False).apply(resumen_anchor)
-resultados.reset_index(inplace=True)
-resultados_dict = resultados.set_index(['Lote', 'Invernadero']).to_dict('index')
-
-# Limpieza auxiliar del historial
-ventas_historia.drop(columns=['actividad_norm'], inplace=True, errors='ignore')
-
-# =========================
-# 2) Nuevos registros "ventas"
-# =========================
-ventas['Fecha Cosecha']  = pd.to_datetime(ventas['Fecha Cosecha'],  format='%d/%m/%Y', errors='coerce')
-ventas['Marca temporal'] = pd.to_datetime(ventas['Marca temporal'], errors='coerce')
-
-ventas.sort_values(
-    by=['Lote', 'Invernadero', 'Fecha Cosecha', 'Marca temporal'],
-    inplace=True
-)
-
-def asignar_semana_del_lote(grupo: pd.DataFrame) -> pd.DataFrame:
-    grupo = grupo.copy()
-    key = (grupo['Lote'].iloc[0], grupo['Invernadero'].iloc[0])
-    hist = resultados_dict.get(key, None)
-
-    # Establecer ancla inicial
-    if hist is None or pd.isna(hist.get('AnchorMonday', pd.NaT)):
-        # Si no hay ancla histórica válida, arrancamos en el lunes de la primera fecha del grupo
-        primera_fecha = pd.to_datetime(grupo['Fecha Cosecha'].iloc[0], errors='coerce')
-        anchor = lunes_de(primera_fecha) if pd.notna(primera_fecha) else pd.NaT
-    else:
-        anchor = hist['AnchorMonday']
-
-    semanas = []
-    for _, fila in grupo.iterrows():
-        actividad_norm = quitar_acentos(str(fila['Clasificación/Tipo Actividad'])).lower().strip()
-        f = fila['Fecha Cosecha']
-
-        if pd.isna(f):
-            # Fecha inválida → hereda la última semana calculada
-            semanas.append(int(semanas[-1]) if semanas else 0)
-            continue
-
-        if actividad_norm == TARGET_RECOLECCION:
-            # Reset inmediato en la recolección
-            anchor = lunes_de(f)
-            semanas.append(0)
-            continue
-
-        # Semana = lunes_transcurridos desde el ancla (última recolección o inicial)
-        semana_actual = semanas_transcurridas_lunes_domingo(anchor, f)
-        semanas.append(int(semana_actual))
-
-    grupo['Semana del Ciclo Productivo'] = pd.to_numeric(semanas, downcast='integer')
-    return grupo
-
-ventas_actualizado = ventas.groupby(['Lote', 'Invernadero'], group_keys=False).apply(asignar_semana_del_lote)
-ventas_actualizado.reset_index(drop=True, inplace=True)
-
-
-ventas_actualizado = ventas.groupby(['Lote', 'Invernadero'], group_keys=False).apply(asignar_semana_del_lote)
-ventas_actualizado.reset_index(drop=True, inplace=True)
-
-ventas_actualizado.drop(columns={'Clasificación/Tipo Actividad'}, inplace=True)
+# Eliminar columna d etipo de actividad
+ventas_consolidado.drop(columns={'Clasificación/Tipo Actividad'}, inplace=True)
 
 # Ordenar df ventas actualizado
-ventas_actualizado =  ventas_actualizado.sort_values(by=['Fecha Cosecha', 'Marca temporal']).reset_index(drop=True)
+ventas_consolidado =  ventas_consolidado.sort_values(by=['Fecha Cosecha', 'Marca temporal']).reset_index(drop=True)
 
 # Devolver formato a columnas en actualizado
-ventas_actualizado['Fecha Cosecha'] = ventas_actualizado['Fecha Cosecha'].dt.strftime('%d/%m/%Y')
-ventas_actualizado['Marca temporal'] = ventas_actualizado['Marca temporal'].dt.strftime('%d/%m/%Y %H:%M:%S')
-
-
-# Ordenar df ventas hisotria
-ventas_historia =  ventas_historia.sort_values(by='Fecha Cosecha').reset_index(drop=True)
-ventas_historia.drop(columns={'Clasificación/Tipo Actividad'}, inplace=True)
-
-# Devolver formato a columna de fecha a historia
-ventas_historia['Fecha Cosecha'] = ventas_historia['Fecha Cosecha'].dt.strftime('%d/%m/%Y')
-
-# Concatenar los DataFrames
-ventas_consolidado = pd.concat([ventas_historia, ventas_actualizado]).reset_index(drop=True)
+ventas_consolidado['Fecha Cosecha'] = ventas_consolidado['Fecha Cosecha'].dt.strftime('%d/%m/%Y')
 
 
 ############################################        ACTUALIZAR SHEET ventas     ##############################
@@ -1639,7 +1622,235 @@ write_range(spreadsheet_id=spreadsheet_id, sheet_name='Ventas', dataframe=ventas
 
 ########################################################################################################################
 
-# #print(ventas_consolidado)
+
+################################################################################################################################                                          
+#############################          TRATAMIENTO PARA RELACIÓN INSUMOS VS VENTAS              ################################
+################################################################################################################################
+
+####################      LEER HOJA DE INVERSION INICIAL         ####################
+
+def read_range(spreadsheet_id, sheet_name="Inversion Inicial", range_=None):
+  if range_ is not None:
+    sheet_name=sheet_name+"!"
+  else:
+    range_=""
+
+  dict_result = spreadsheet_service.spreadsheets().values().get(
+  spreadsheetId=spreadsheet_id, range=sheet_name + range_).execute()
+  df = pd.DataFrame(dict_result['values'])
+  df.columns=df.iloc[0,:]
+  df = df.drop(df.index[0])
+
+  return df
+
+# Leer rango
+inversion = read_range(spreadsheet_id=spreadsheet_id)
+
+# Filtrar solo plantulas
+inversion_plantas = inversion[
+    (inversion['ITEM'] == 'PLÁNTULAS DE TOMATE') |
+    (inversion['ITEM'] == 'PLÁNTULAS 200')
+]
+
+# Dar formato numerico a columna de cantidad
+inversion_plantas['CANTIDAD COMPRADA/APLICADA'] = inversion_plantas['CANTIDAD COMPRADA/APLICADA'].str.replace('.','')
+inversion_plantas['CANTIDAD COMPRADA/APLICADA'] = inversion_plantas['CANTIDAD COMPRADA/APLICADA'].str.replace(',','.')
+inversion_plantas['CANTIDAD COMPRADA/APLICADA'] = pd.to_numeric(inversion_plantas['CANTIDAD COMPRADA/APLICADA'])
+
+# Renombrar columnas
+inversion_plantas.rename(columns={'CANTIDAD COMPRADA/APLICADA':'Cantidad Plantas Total', 'LOTE':'Lote',
+                                  'INVERNADERO':'Invernadero', 'CICLO':'Ciclo'}, inplace=True)
 
 
+# Dejar solo las aplicaciones de plantulas de tomate
+insumos_aplicados = insumos_total[insumos_total['Item'] == 'PLÁNTULAS DE TOMATE']
 
+# Filtrar df d einsumos para solo las aplicaciones
+insumos_aplicados = insumos_aplicados[insumos_aplicados['Concepto']=='APLICACIÓN']
+
+# Dar valor absoluto a cantidad aplicada para que quede positivo
+insumos_aplicados[['Cantidad Comprada/Aplicada', 'Total']] = abs(insumos_aplicados[['Cantidad Comprada/Aplicada', 'Total']])
+
+# Renombrar columnas de insumos aplicados
+insumos_aplicados.rename(columns={'Cantidad Comprada/Aplicada':'Cantidad Plantas Total'}, inplace=True)
+
+# Funcion para renombrar las calidades TERCERA
+def renombrar_tercera_alternada(df, columna="Clasificación/Calidad", valor="TERCERA"):
+    """
+    Para runs consecutivos de 'valor' en la columna indicada, renombra alternando
+    'TERCERA 1', 'TERCERA 2', 'TERCERA 1', ... Si hay un solo elemento aislado
+    se renombra como 'TERCERA 1'.
+    """
+    df = df.copy()
+    # Normalizar (opcional): quitar espacios y convertir a mayúsculas para comparar
+    clean = df[columna].astype(str).str.strip().str.upper()
+    mask = clean == valor.upper()
+    
+    # grupos para runs consecutivos (cambia cuando mask cambia)
+    grp = (mask != mask.shift(fill_value=False)).cumsum()
+    
+    # Contador dentro de cada grupo
+    counter = (mask.groupby(grp).cumcount()).where(mask, other=-1)
+    
+    # Sufijo alternado: 1,2,1,2,... solo donde mask True
+    suf = ((counter % 2) + 1).astype(int)
+    
+    # Construir la nueva etiqueta
+    nueva = df[columna].where(~mask, other=(valor + " " + suf.astype(str)))
+    
+    df[columna] = nueva
+    return df
+
+# Aplicar funcion de renombrar
+ventas_consolidado = renombrar_tercera_alternada(ventas_consolidado, "Clasificación/Calidad")
+
+# Reemplazar 'PRIMERA' por 'EXTRA'
+ventas_consolidado['Clasificación/Calidad'] = ventas_consolidado['Clasificación/Calidad'].str.replace('PRIMERA', 'EXTRA')
+
+# Renombrar columnas de ventas aplicadas
+ventas_consolidado.rename(columns={'Total':'Total Ventas', 'Cantidad':'Cantidad Vendida'}, inplace=True)
+
+########################################################      TRATAMIENTO PARA INVERNADERO LOTE        #######################################################
+
+# Agrupar inversion
+inversion_lote = inversion_plantas.groupby(['Invernadero', 'Lote', 'Ciclo'])[['Cantidad Plantas Total']].sum().reset_index()
+
+# Agrupar insumos
+insumos_lote = insumos_aplicados.groupby(['Invernadero', 'Lote', 'Ciclo'])[['Cantidad Plantas Total']].sum().reset_index()
+
+# Concatenar inverison e insumos
+insumos_lote = pd.concat([insumos_lote, inversion_lote])
+
+# Agrupar insumos
+insumos_lote = insumos_lote.groupby(['Invernadero', 'Lote', 'Ciclo'])[['Cantidad Plantas Total']].sum().reset_index()
+
+# Agrupar ventas
+ventas_lote = ventas_consolidado.groupby(['Invernadero', 'Lote', 'Clasificación/Calidad', 'Ciclo'])[['Cantidad Vendida', 'Valor Unidad', 'Total Ventas']].sum().reset_index() 
+
+# Igualar las terceras para efectos de totales
+col_clasif = 'Clasificación/Calidad'
+
+# 1) Normaliza la columna de clasificación para filtrar (sin tocar el DF)
+clasif_norm = ventas_lote[col_clasif].astype(str).str.strip().str.upper()
+
+# 2) Subconjuntos TERCERA 1 y TERCERA 2
+t1 = ventas_lote[clasif_norm.eq('TERCERA 1')]
+t2 = ventas_lote[clasif_norm.eq('TERCERA 2')]
+
+# 3) Define claves (todas las columnas no numéricas compartidas, excepto la de clasificación)
+no_num = ventas_lote.select_dtypes(exclude='number').columns.tolist()
+keys = [c for c in no_num if c != col_clasif]  # ej.: ['Invernadero','Lote','Ciclo']
+
+# 4) Combos presentes en TERCERA 1 que no existen en TERCERA 2
+comb_t1 = t1[keys].drop_duplicates()
+comb_t2 = t2[keys].drop_duplicates()
+
+faltantes = (
+    comb_t1.merge(comb_t2, how='left', on=keys, indicator=True)
+           .query('_merge == "left_only"')
+           .drop(columns='_merge')
+)
+
+# 5) Si hay faltantes, créalos con 'TERCERA 2' y numéricos en 0 y añádelos a ventas_lote
+if not faltantes.empty:
+    num_cols = ventas_lote.select_dtypes(include='number').columns.tolist()
+
+    nuevas = faltantes.copy()
+    nuevas[col_clasif] = 'TERCERA 2'
+
+    # Pone 0 en todas las columnas numéricas
+    for c in num_cols:
+        nuevas[c] = 0
+
+    # Asegura el mismo orden/columnas del DF original
+    nuevas = nuevas.reindex(columns=ventas_lote.columns, fill_value=0)
+
+    # Anexa
+    ventas_lote = pd.concat([ventas_lote, nuevas], ignore_index=True)
+
+# 1) Merge básico (traer Cantidad Plantas Total a las filas de ventas)
+merged = pd.merge(
+    ventas_lote,
+    insumos_lote[['Invernadero','Lote','Ciclo','Cantidad Plantas Total']],
+    on=['Invernadero','Lote','Ciclo'],
+    how='outer'
+)
+
+# Si prefieres 0 cuando no existe total en insumos_lote:
+merged['Cantidad Plantas Total'] = merged['Cantidad Plantas Total'].fillna(0).astype('Int64')
+
+# 2) Crear tabla de calidades únicas por grupo
+unique_quals = (
+    merged[['Invernadero','Lote','Ciclo','Clasificación/Calidad']]
+    .drop_duplicates()
+    .reset_index(drop=True)
+)
+
+# 3) Traer el total por grupo a la tabla de calidades únicas
+unique_quals = unique_quals.merge(
+    insumos_lote[['Invernadero','Lote','Ciclo','Cantidad Plantas Total']],
+    on=['Invernadero','Lote','Ciclo'],
+    how='left'
+)
+unique_quals['Cantidad Plantas Total'] = unique_quals['Cantidad Plantas Total'].fillna(0).astype(int)
+
+# 4) Calcular base y residuo por grupo para repartir enteros exactamente
+# num_calidades por grupo
+unique_quals['num_calidades'] = unique_quals.groupby(
+    ['Invernadero','Lote','Ciclo']
+)['Clasificación/Calidad'].transform('nunique')
+
+# base por calidad (parte entera)
+unique_quals['base'] = (unique_quals['Cantidad Plantas Total'] // unique_quals['num_calidades']).astype(int)
+
+# calcular residuo total por grupo (lo que falta por asignar)
+remainders = (
+    unique_quals.groupby(['Invernadero','Lote','Ciclo'])
+    .apply(lambda g: int(g['Cantidad Plantas Total'].iloc[0]) - int(g['base'].iloc[0]) * len(g))
+    .reset_index(name='remainder')
+)
+
+# ordenar y indexar calidades dentro de cada grupo para distribuir el residuo
+unique_quals = unique_quals.sort_values(['Invernadero','Lote','Ciclo','Clasificación/Calidad']).reset_index(drop=True)
+unique_quals['quality_idx'] = unique_quals.groupby(['Invernadero','Lote','Ciclo']).cumcount()
+
+# unir el remainder y asignar +1 a las primeras 'remainder' calidades
+unique_quals = unique_quals.merge(remainders, on=['Invernadero','Lote','Ciclo'], how='left')
+unique_quals['remainder'] = unique_quals['remainder'].fillna(0).astype(int)
+
+unique_quals['Cantidad Plantas Individual'] = unique_quals['base'] + (unique_quals['quality_idx'] < unique_quals['remainder']).astype(int)
+
+# quedarnos sólo con las columnas necesarias para mapear de vuelta
+map_cols = unique_quals[['Invernadero','Lote','Ciclo','Clasificación/Calidad','Cantidad Plantas Individual']]
+
+# 5) Merge final: asignar 'Cantidad Plantas Individual' a cada fila de merged (habrá la misma por cada calidad)
+produccion_calidad = merged.merge(
+    map_cols,
+    on=['Invernadero','Lote','Ciclo','Clasificación/Calidad'],
+    how='left'
+)
+
+
+# Crear columna de cantidad vendida total
+produccion_calidad['Cantidad Vendida Total'] = produccion_calidad['Cantidad Vendida'].sum()
+
+#################   CARGAR SHEET Produccion_Calidad    ##############
+
+# Limpiar Hoja Google sheets
+clear_range(spreadsheet_id=spreadsheet_id, sheet_name='Produccion_Calidad')
+
+# Escribir df en hoja Google Sheets
+write_range(spreadsheet_id=spreadsheet_id, sheet_name='Produccion_Calidad', dataframe=produccion_calidad, include_headers=True)
+
+
+# Df sin las clasificaciones
+produccion = produccion_calidad.drop(columns={'Clasificación/Calidad', 'Cantidad Vendida Total'})
+
+
+#################   CARGAR SHEET Produccion    ##############
+
+# Limpiar Hoja Google sheets
+clear_range(spreadsheet_id=spreadsheet_id, sheet_name='Produccion')
+
+# Escribir df en hoja Google Sheets
+write_range(spreadsheet_id=spreadsheet_id, sheet_name='Produccion', dataframe=produccion, include_headers=True)
