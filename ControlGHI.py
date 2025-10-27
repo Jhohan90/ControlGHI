@@ -1413,10 +1413,13 @@ ventas_total = pd.concat([ventas_historia, ventas])
 # Crear df actividades con base a la fecha y actividades de jornales
 actividades = jornales_consolidado[['Fecha Actividad', 'Lote', 'Invernadero', 'Clasificación/Tipo Actividad']]
 
-# Filtrar las actividades para obtener solo aquellas que corresponden a Erradicación Plantas o siembra plantas
+# Filtrar las actividades para obtener solo aquellas que corresponden a Erradicación Plantas o Recolección, Clasificación y Empaque
 actividades = actividades[
-    actividades['Clasificación/Tipo Actividad'].isin(['Erradicación Plantas', 'Siembra plantas'])
+    actividades['Clasificación/Tipo Actividad'].isin(['Erradicación Plantas', 'Recolección, Clasificación y Empaque'])
 ].drop_duplicates()
+
+# Eliminar duplicados
+actividades = actividades.drop_duplicates(subset=['Fecha Actividad', 'Lote', 'Invernadero'], keep='last')
 
 # Renombrar columna d efecha d eactividad a fecha de cosecha para el merge
 actividades.rename(columns={'Fecha Actividad': 'Fecha Cosecha'}, inplace=True)
@@ -1427,132 +1430,91 @@ actividades['Fecha Cosecha'] = pd.to_datetime(actividades['Fecha Cosecha'], form
 # Asignar la actividad de erradicacion a las a ventas historico
 ventas_total = pd.merge(ventas_total, actividades, on =['Fecha Cosecha', 'Lote', 'Invernadero'], how='outer')
 
-# Llenar nulos de actividad con 'Sin Actividad'
-ventas_total['Clasificación/Tipo Actividad'] = ventas_total['Clasificación/Tipo Actividad'].fillna('Sin Actividad')
 
+# --- columnas (ajústalas si tus nombres difieren) ---
+COL_FECHA = "Fecha Cosecha"
+COL_ACT  = "Clasificación/Tipo Actividad"
+COL_INV  = "Invernadero"
+COL_LOTE = "Lote"
+COL_SEM  = "Semana del Ciclo Productivo"
 
-# === Configura aquí los literales exactos de tus actividades (ajusta si difieren) ===
-ERRAD = "erradicacion plantas"
-SIEMBRA = "siembra plantas"
+# Asegurar datetime y limpiar semanas existentes
+ventas_total[COL_FECHA] = pd.to_datetime(ventas_total[COL_FECHA], errors="coerce")
+# Convierte todo a número; '' y textos -> NaN
+ventas_total[COL_SEM] = pd.to_numeric(ventas_total[COL_SEM], errors="coerce")
 
-# ---------------- utilidades ----------------
-def lunes_de(fecha: pd.Timestamp) -> pd.Timestamp:
-    if pd.isna(fecha):
-        return fecha
-    return fecha - pd.Timedelta(days=fecha.weekday())  # lunes=0
+# Normaliza el texto de actividad para búsquedas robustas
+def _norm(s):
+    return str(s).strip().lower()
 
-def semanas_entre_lunes(m_start: pd.Timestamp, m_end: pd.Timestamp) -> int:
-    if pd.isna(m_start) or pd.isna(m_end):
-        return 0
-    return max(0, int((m_end - m_start).days // 7))
+def monday_of(d):
+    # Devuelve el lunes de la semana de la fecha d
+    return d - pd.Timedelta(days=d.weekday())
 
-def sin_acentos(x: str) -> str:
-    if not isinstance(x, str):
-        return x
-    nfkd = unicodedata.normalize("NFKD", x)
-    return "".join([c for c in nfkd if not unicodedata.combining(c)])
+def calcular_semana(grp: pd.DataFrame) -> pd.DataFrame:
+    g = grp.sort_values(COL_FECHA).copy()
 
-def norm_actividad(x: str) -> str:
-    x = "" if pd.isna(x) else str(x)
-    x = sin_acentos(x).strip().lower()
-    x = " ".join(x.split())
-    return x
+    # Estado por grupo (Invernadero+Lote)
+    in_ciclo = False                  # estamos contando semanas?
+    start_monday = None              # lunes base del ciclo (semana 0)
 
-# ---------------- motor de llenado ----------------
-def llenar_semana_ciclo(df: pd.DataFrame) -> pd.DataFrame:
-    # Copia para no mutar el original
-    df = df.copy()
+    for idx, row in g.iterrows():
+        fecha = row[COL_FECHA]
+        if pd.isna(fecha):
+            # si no hay fecha no podemos calcular: deja como está
+            continue
 
-    # Asegura tipos y columnas auxiliares
-    df['Fecha Cosecha'] = pd.to_datetime(df['Fecha Cosecha'], errors='coerce')
-    df['__monday__'] = df['Fecha Cosecha'].apply(lunes_de)
-    df['__act__'] = df['Clasificación/Tipo Actividad'].apply(norm_actividad)
+        act = _norm(row[COL_ACT])
+        cur_monday = monday_of(fecha)
+        semana_existente = row[COL_SEM]  # float o NaN
 
-    # Orden estable: por invernadero, lote y fecha
-    df = df.sort_values(['Invernadero', 'Lote', 'Fecha Cosecha']).reset_index(drop=True)
+        # --- Si la fila YA tiene semana, la respetamos y actualizamos estado ---
+        if pd.notna(semana_existente):
+            sem_int = int(semana_existente)
 
-    resultado = []
+            # Inferimos el lunes de inicio del ciclo desde el valor existente:
+            # cur_monday = start_monday + sem_int semanas  ->  start_monday = cur_monday - sem_int semanas
+            start_monday = cur_monday - pd.Timedelta(weeks=sem_int)
 
-    for (inv, lote), g in df.groupby(['Invernadero', 'Lote'], sort=False):
-        g = g.copy()
-
-        mode = 'fallow'                 # 'fallow' -> 0; 'growing' -> 0,1,2...
-        epoch_monday = None             # lunes base para calcular semanas
-        freeze_zero_until_monday = None # siembra: mantener 0 hasta este lunes
-        current_week = None
-
-        filled = []
-
-        for _, row in g.iterrows():
-            monday = row['__monday__']
-            act = row['__act__']
-            wk_known = row['Semana del Ciclo Productivo']
-            wk_known = None if pd.isna(wk_known) else int(wk_known)
-
-            # Transiciones por actividad
-            if act == ERRAD:
-                # Fin de ciclo: semana = 0 desde aquí hasta nueva siembra y lunes siguiente
-                mode = 'fallow'
-                epoch_monday = None
-                freeze_zero_until_monday = None
-                current_week = 0
-
-            if act == SIEMBRA:
-                # Desde siembra hasta el próximo lunes: 0; luego arranca conteo
-                freeze_zero_until_monday = monday + pd.Timedelta(days=7)
-                mode = 'fallow'
-                epoch_monday = None
-                current_week = 0
-
-            # Si ya pasó el lunes posterior a siembra, comienza a crecer
-            if freeze_zero_until_monday is not None and monday >= freeze_zero_until_monday:
-                epoch_monday = freeze_zero_until_monday
-                mode = 'growing'
-                freeze_zero_until_monday = None
-
-            # Si hay valor conocido, usarlo como ancla para continuidad
-            if wk_known is not None:
-                epoch_monday = monday - pd.Timedelta(days=7 * wk_known)
-                # Si el valor conocido es >0, estamos creciendo; si es 0, respetamos modo actual (puede ser fallow)
-                if wk_known > 0:
-                    mode = 'growing'
-                current_week = wk_known
-                filled.append(wk_known)
-                continue
-
-            # Calcular si no hay valor conocido
-            if mode == 'fallow':
-                current_week = 0
-                filled.append(0)
+            # Si la actividad es erradicación, cerramos ciclo; de lo contrario seguimos en ciclo
+            if "erradicación" in act:
+                in_ciclo = False
+                # Mantiene el 0 existente (si lo había)
             else:
-                # growing
-                if epoch_monday is None:
-                    # Sin ancla previa: inicia en 0 desde el lunes actual
-                    epoch_monday = monday
-                    current_week = 0
-                    filled.append(0)
-                else:
-                    w = semanas_entre_lunes(epoch_monday, monday)
-                    current_week = int(w)
-                    filled.append(current_week)
+                in_ciclo = True
+            continue
 
-        g['_SemanaFill_'] = filled
-        # Solo completar vacíos; preservar lo existente
-        g['Semana del Ciclo Productivo'] = g['Semana del Ciclo Productivo'].fillna(g['_SemanaFill_'])
-        resultado.append(g)
+        # --- Filas SIN semana (hay que calcular) ---
+        if "erradicación" in act:
+            # Reinicia y queda en 0 hasta próxima recolección
+            g.at[idx, COL_SEM] = 0
+            in_ciclo = False
+            start_monday = None
+            continue
 
-    res = pd.concat(resultado, axis=0).sort_index()
-    # Limpieza
-    res = res.drop(columns=['__monday__', '__act__', '_SemanaFill_'])
-    return res
+        if "recolección" in act:
+            if not in_ciclo or start_monday is None:
+                # Primera recolección del ciclo -> semana 0
+                start_monday = cur_monday
+                g.at[idx, COL_SEM] = 0
+                in_ciclo = True
+            else:
+                # Ya en ciclo: semanas desde el lunes de inicio
+                g.at[idx, COL_SEM] = int((cur_monday - start_monday).days // 7)
+            continue
 
-# Forzar formato numerico
-ventas_total['Semana del Ciclo Productivo'] = pd.to_numeric(
-    ventas_total['Semana del Ciclo Productivo'], errors='coerce'
-)
+        # Otras actividades:
+        if in_ciclo and start_monday is not None:
+            # Contamos semanas desde el lunes de inicio
+            g.at[idx, COL_SEM] = int((cur_monday - start_monday).days // 7)
+        else:
+            # No estamos en ciclo (entre erradicación y próxima recolección): 0
+            g.at[idx, COL_SEM] = 0
 
-# Aplicar funcion
-ventas_consolidado = llenar_semana_ciclo(ventas_total)
+    return g
+
+# Aplica por (Invernadero, Lote)
+ventas_consolidado = ventas_total.groupby([COL_INV, COL_LOTE], group_keys=False).apply(calcular_semana)
 
 # Descartar filas donde no hubo compra
 ventas_consolidado = ventas_consolidado[~ventas_consolidado['Mes Proyecto'].isnull()]
