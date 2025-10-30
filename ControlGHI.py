@@ -1430,6 +1430,8 @@ actividades['Fecha Cosecha'] = pd.to_datetime(actividades['Fecha Cosecha'], form
 # Asignar la actividad de erradicacion a las a ventas historico
 ventas_total = pd.merge(ventas_total, actividades, on =['Fecha Cosecha', 'Lote', 'Invernadero'], how='outer')
 
+# Crear columna se orden
+ventas_total["Orden"] = range(1, len(ventas_total) + 1)
 
 # --- columnas (ajústalas si tus nombres difieren) ---
 COL_FECHA = "Fecha Cosecha"
@@ -1519,11 +1521,11 @@ ventas_consolidado = ventas_total.groupby([COL_INV, COL_LOTE], group_keys=False)
 # Descartar filas donde no hubo compra
 ventas_consolidado = ventas_consolidado[~ventas_consolidado['Mes Proyecto'].isnull()]
 
-# Eliminar columna d etipo de actividad
-ventas_consolidado.drop(columns={'Clasificación/Tipo Actividad'}, inplace=True)
-
 # Ordenar df ventas actualizado
-ventas_consolidado =  ventas_consolidado.sort_values(by=['Fecha Cosecha', 'Marca temporal']).reset_index(drop=True)
+ventas_consolidado =  ventas_consolidado.sort_values(by=['Orden', 'Fecha Cosecha', 'Marca temporal']).reset_index(drop=True)
+
+# Eliminar columna d etipo de actividad
+ventas_consolidado.drop(columns={'Clasificación/Tipo Actividad', 'Orden'}, inplace=True)
 
 # Devolver formato a columnas en actualizado
 ventas_consolidado['Fecha Cosecha'] = ventas_consolidado['Fecha Cosecha'].dt.strftime('%d/%m/%Y')
@@ -1816,3 +1818,4 @@ clear_range(spreadsheet_id=spreadsheet_id, sheet_name='Produccion')
 
 # Escribir df en hoja Google Sheets
 write_range(spreadsheet_id=spreadsheet_id, sheet_name='Produccion', dataframe=produccion, include_headers=True)
+
