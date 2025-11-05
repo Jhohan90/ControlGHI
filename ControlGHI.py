@@ -784,6 +784,11 @@ insumos_compras['Concepto'] = 'COMPRA'
 # Crear columna Lote igual a TODOS
 insumos_compras['Lote'] = 'TODOS'
 
+############    Excepción para compras de plantulas   ################
+insumos_compras['Observaciones'] = insumos_compras['Observaciones'].str.upper().str.strip()
+
+insumos_compras.loc[insumos_compras['Item'] == 'PLÁNTULAS DE TOMATE', 'Lote'] = insumos_compras['Observaciones']
+
 # Crear la nueva columna 'Concepto P&L o Balance General'
 insumos_compras['Concepto P&L o Balance General'] = insumos_compras['Clasificación/Tipo Actividad'].apply(
     lambda x: 'Plántulas' if 'Plantas' in x else 'Insumos'
@@ -1818,4 +1823,5 @@ clear_range(spreadsheet_id=spreadsheet_id, sheet_name='Produccion')
 
 # Escribir df en hoja Google Sheets
 write_range(spreadsheet_id=spreadsheet_id, sheet_name='Produccion', dataframe=produccion, include_headers=True)
+
 
