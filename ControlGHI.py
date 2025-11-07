@@ -1801,7 +1801,8 @@ produccion_calidad = merged.merge(
 
 
 # Crear columna de cantidad vendida total
-produccion_calidad['Cantidad Vendida Total'] = produccion_calidad['Cantidad Vendida'].sum()
+group_cols = ['Invernadero', 'Lote', 'Ciclo']
+produccion_calidad['Cantidad Vendida Total'] = produccion_calidad.groupby(group_cols)['Cantidad Vendida'].transform('sum')
 
 #################   CARGAR SHEET Produccion_Calidad    ##############
 
@@ -1823,5 +1824,6 @@ clear_range(spreadsheet_id=spreadsheet_id, sheet_name='Produccion')
 
 # Escribir df en hoja Google Sheets
 write_range(spreadsheet_id=spreadsheet_id, sheet_name='Produccion', dataframe=produccion, include_headers=True)
+
 
 
