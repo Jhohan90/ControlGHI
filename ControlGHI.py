@@ -1816,11 +1816,6 @@ write_range(spreadsheet_id=spreadsheet_id, sheet_name='Produccion_Calidad', data
 # Df sin las clasificaciones
 produccion = produccion_calidad.drop(columns={'Clasificación/Calidad', 'Cantidad Vendida Total'})
 
-# Agrupar df produccion
-produccion = produccion.groupby(['Invernadero', 'Lote', 'Ciclo']).agg({"Cantidad Vendida": "sum", "Valor Unidad": "sum",
-                                                                       "Total Ventas": "sum", "Cantidad Plantas Total": "mean",
-                                                                       "Cantidad Plantas Individual": "mean"}).reset_index() 
-
 
 #################   CARGAR SHEET Produccion    ##############
 
@@ -1830,7 +1825,10 @@ clear_range(spreadsheet_id=spreadsheet_id, sheet_name='Produccion')
 # Escribir df en hoja Google Sheets
 write_range(spreadsheet_id=spreadsheet_id, sheet_name='Produccion', dataframe=produccion, include_headers=True)
 
-
+# Agrupar df produccion
+produccion = produccion.groupby(['Invernadero', 'Lote', 'Ciclo']).agg({"Cantidad Vendida": "sum", "Valor Unidad": "sum",
+                                                                       "Total Ventas": "sum", "Cantidad Plantas Total": "mean",
+                                                                       "Cantidad Plantas Individual": "mean"}).reset_index() 
 
 ################################################################################################################################                                          
 #############################          TRATAMIENTO PARA RELACIÓN INSUMOS VS JORNALES            ################################
@@ -1970,3 +1968,4 @@ clear_range(spreadsheet_id=spreadsheet_id, sheet_name='Costos Plantulas')
 
 # Escribir df en hoja Google Sheets
 write_range(spreadsheet_id=spreadsheet_id, sheet_name='Costos Plantulas', dataframe=costos_plantulas, include_headers=True)
+
