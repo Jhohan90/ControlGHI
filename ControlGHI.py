@@ -1816,6 +1816,11 @@ write_range(spreadsheet_id=spreadsheet_id, sheet_name='Produccion_Calidad', data
 # Df sin las clasificaciones
 produccion = produccion_calidad.drop(columns={'Clasificación/Calidad', 'Cantidad Vendida Total'})
 
+# Agrupar df produccion
+produccion = produccion.groupby(['Invernadero', 'Lote', 'Ciclo']).agg({"Cantidad Vendida": "sum", "Valor Unidad": "sum",
+                                                                       "Total Ventas": "sum", "Cantidad Plantas Total": "mean",
+                                                                       "Cantidad Plantas Individual": "mean"}).reset_index() 
+
 
 #################   CARGAR SHEET Produccion    ##############
 
@@ -1827,3 +1832,141 @@ write_range(spreadsheet_id=spreadsheet_id, sheet_name='Produccion', dataframe=pr
 
 
 
+################################################################################################################################                                          
+#############################          TRATAMIENTO PARA RELACIÓN INSUMOS VS JORNALES            ################################
+################################################################################################################################
+
+###################################        DATOS PARA COSTOS POR CONCEPTO     ###################################
+
+# Agrupar jornales consolidado
+costo_jornales = jornales_consolidado.groupby(['Invernadero', 'Lote', 'Ciclo', 'Clasificación/Tipo Actividad', 'Concepto P&L o Balance General'])[['Total', 'Unidad']].sum().reset_index() 
+
+# Dejar solo las aplicaciones en los insumos totales
+costo_insumos = insumos_total[insumos_total['Concepto']=='APLICACIÓN']
+
+# Dar valor aabsoluto a columna de total
+costo_insumos[['Total', 'Cantidad Comprada/Aplicada']] = abs(costo_insumos[['Total', 'Cantidad Comprada/Aplicada']])
+
+# Agrupar insumos totales
+costo_insumos = costo_insumos.groupby(['Invernadero', 'Lote', 'Ciclo', 'Clasificación/Tipo Actividad', 'Concepto P&L o Balance General'])[['Total', 'Cantidad Comprada/Aplicada']].sum().reset_index()
+
+# Renombrar columna
+costo_insumos.rename(columns={'Cantidad Comprada/Aplicada':'Unidad'},inplace=True)
+
+# Concatenar las tablas
+costos_actividad = pd.concat([costo_jornales, costo_insumos])
+
+# Renombrar columna de total
+costos_actividad.rename(columns={'Total':'Costo Total', 'Concepto P&L o Balance General':'Concepto'},inplace=True)
+
+# llenar nulos con 0
+costos_actividad = costos_actividad.fillna(0)
+
+#################   CARGAR SHEET costos_actividad    ##############
+
+# Limpiar Hoja Google sheets
+clear_range(spreadsheet_id=spreadsheet_id, sheet_name='Costos Actividad')
+
+# Escribir df en hoja Google Sheets
+write_range(spreadsheet_id=spreadsheet_id, sheet_name='Costos Actividad', dataframe=costos_actividad, include_headers=True)
+
+
+###################################        DATOS PARA COSTOS TOTALES    ###################################
+
+# Agrupar los costos
+costos_total = costos_actividad.groupby(['Invernadero', 'Lote', 'Ciclo'])[['Costo Total']].sum().reset_index()
+
+# Asignar planta al costo
+costos_total = pd.merge(costos_total, produccion, on=['Invernadero', 'Lote', 'Ciclo'], how='outer')
+
+# Eliminar columna de cantidad plantas individual
+costos_total.drop(columns={'Cantidad Plantas Individual'}, inplace=True)
+
+# llenar nulos con 0
+costos_total = costos_total.fillna(0)
+
+#################   CARGAR SHEET costos_total    ##############
+
+# Limpiar Hoja Google sheets
+clear_range(spreadsheet_id=spreadsheet_id, sheet_name='Costos Total')
+
+# Escribir df en hoja Google Sheets
+write_range(spreadsheet_id=spreadsheet_id, sheet_name='Costos Total', dataframe=costos_total, include_headers=True)
+
+
+
+###################################        DATOS PARA COSTOS MO    ###################################
+# Descartar insumos
+costos_mo = costos_actividad[
+    (costos_actividad['Concepto'] != 'Insumos') &
+    (costos_actividad['Concepto'] != 'Plántulas')
+]
+
+# Crear df de costos_mo
+costos_mo = costos_mo.groupby(['Invernadero', 'Lote', 'Ciclo'])[['Costo Total']].sum().reset_index()
+
+# Asignar planta al costo
+costos_mo = pd.merge(costos_mo, produccion, on=['Invernadero', 'Lote', 'Ciclo'], how='outer')
+
+# Eliminar columna de cantidad plantas individual
+costos_mo.drop(columns={'Cantidad Plantas Individual'}, inplace=True)
+
+# llenar nulos con 0
+costos_mo = costos_mo.fillna(0)
+
+#################   CARGAR SHEET costos_mo    ##############
+
+# Limpiar Hoja Google sheets
+clear_range(spreadsheet_id=spreadsheet_id, sheet_name='Costos MO')
+
+# Escribir df en hoja Google Sheets
+write_range(spreadsheet_id=spreadsheet_id, sheet_name='Costos MO', dataframe=costos_mo, include_headers=True)
+
+
+###################################        DATOS PARA COSTOS INSUMOS    ###################################
+# Descartar mo
+costos_insumos = costos_actividad[costos_actividad['Concepto'] == 'Insumos']
+
+# Crear df de costos_insumos
+costos_insumos = costos_insumos.groupby(['Invernadero', 'Lote', 'Ciclo'])[['Costo Total']].sum().reset_index()
+
+# Asignar planta al costo
+costos_insumos = pd.merge(costos_insumos, produccion, on=['Invernadero', 'Lote', 'Ciclo'], how='outer')
+
+# Eliminar columna de cantidad plantas individual
+costos_insumos.drop(columns={'Cantidad Plantas Individual'}, inplace=True)
+
+# llenar nulos con 0
+costos_insumos = costos_insumos.fillna(0)
+
+#################   CARGAR SHEET costos_insumos    ##############
+
+# Limpiar Hoja Google sheets
+clear_range(spreadsheet_id=spreadsheet_id, sheet_name='Costos Insumos')
+
+# Escribir df en hoja Google Sheets
+write_range(spreadsheet_id=spreadsheet_id, sheet_name='Costos Insumos', dataframe=costos_insumos, include_headers=True)
+
+###################################        DATOS PARA COSTOS PLANTULAS    ###################################
+# Descartar mo
+costos_plantulas = costos_actividad[costos_actividad['Concepto'] == 'Plántulas']
+
+# Crear df de costos_plantulas
+costos_plantulas = costos_plantulas.groupby(['Invernadero', 'Lote', 'Ciclo'])[['Costo Total']].sum().reset_index()
+
+# Asignar planta al costo
+costos_plantulas = pd.merge(costos_plantulas, produccion, on=['Invernadero', 'Lote', 'Ciclo'], how='outer')
+
+# Eliminar columna de cantidad plantas individual
+costos_plantulas.drop(columns={'Cantidad Plantas Individual'}, inplace=True)
+
+# llenar nulos con 0
+costos_plantulas = costos_plantulas.fillna(0)
+
+#################   CARGAR SHEET costos_plantulas    ##############
+
+# Limpiar Hoja Google sheets
+clear_range(spreadsheet_id=spreadsheet_id, sheet_name='Costos Plantulas')
+
+# Escribir df en hoja Google Sheets
+write_range(spreadsheet_id=spreadsheet_id, sheet_name='Costos Plantulas', dataframe=costos_plantulas, include_headers=True)
