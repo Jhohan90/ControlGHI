@@ -1868,6 +1868,28 @@ write_range(spreadsheet_id=spreadsheet_id, sheet_name='Produccion', dataframe=pr
 #############################          TRATAMIENTO PARA RELACIÓN INSUMOS VS JORNALES            ################################
 ################################################################################################################################
 
+# Leer hoja de presupuesto
+def read_range(spreadsheet_id, sheet_name="Presupuesto", range_=None):
+  if range_ is not None:
+    sheet_name=sheet_name+"!"
+  else:
+    range_=""
+
+  dict_result = spreadsheet_service.spreadsheets().values().get(
+  spreadsheetId=spreadsheet_id, range=sheet_name + range_).execute()
+  df = pd.DataFrame(dict_result['values'])
+  df.columns=df.iloc[0,:]
+  df = df.drop(df.index[0])
+
+  return df
+
+# Leer rango
+presupuesto = read_range(spreadsheet_id=spreadsheet_id)
+
+# Dar formaot numerico
+presupuesto['Costo Presupuestado'] = presupuesto['Costo Presupuestado'].str.replace('.', '').str.replace(',', '.').astype(float)
+presupuesto['Unidad Presupuestada'] = presupuesto['Unidad Presupuestada'].str.replace('.', '').str.replace(',', '.').astype(float)
+
 ###################################        DATOS PARA COSTOS POR CONCEPTO     ###################################
 
 # Agrupar jornales consolidado
@@ -1890,6 +1912,9 @@ costos_actividad = pd.concat([costo_jornales, costo_insumos])
 
 # Renombrar columna de total
 costos_actividad.rename(columns={'Total':'Costo Total', 'Concepto P&L o Balance General':'Concepto'},inplace=True)
+
+# Asignar Presupuesto a a costos
+costos_actividad = pd.merge(costos_actividad, presupuesto, on=['Invernadero',	'Lote', 'Clasificación/Tipo Actividad', 'Concepto'], how='left')
 
 # llenar nulos con 0
 costos_actividad = costos_actividad.fillna(0)
@@ -2002,6 +2027,7 @@ clear_range(spreadsheet_id=spreadsheet_id, sheet_name='Costos Plantulas')
 
 # Escribir df en hoja Google Sheets
 write_range(spreadsheet_id=spreadsheet_id, sheet_name='Costos Plantulas', dataframe=costos_plantulas, include_headers=True)
+
 
 
 
