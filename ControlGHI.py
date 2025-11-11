@@ -1933,6 +1933,19 @@ write_range(spreadsheet_id=spreadsheet_id, sheet_name='Costos Actividad', datafr
 # Agrupar los costos
 costos_total = costos_actividad.groupby(['Invernadero', 'Lote', 'Ciclo'])[['Costo Total']].sum().reset_index()
 
+# Agrupar la produccion
+produccion = (
+    produccion
+      .groupby(['Invernadero', 'Lote', 'Ciclo'], as_index=False)
+      .agg({
+          'Cantidad Vendida': 'sum',
+          'Valor Unidad': 'sum',
+          'Total Ventas': 'sum',
+          'Cantidad Plantas Total': 'mean',
+          'Cantidad Plantas Individual': 'sum'
+      })
+)
+
 # Asignar planta al costo
 costos_total = pd.merge(costos_total, produccion, on=['Invernadero', 'Lote', 'Ciclo'], how='outer')
 
@@ -2027,6 +2040,7 @@ clear_range(spreadsheet_id=spreadsheet_id, sheet_name='Costos Plantulas')
 
 # Escribir df en hoja Google Sheets
 write_range(spreadsheet_id=spreadsheet_id, sheet_name='Costos Plantulas', dataframe=costos_plantulas, include_headers=True)
+
 
 
 
