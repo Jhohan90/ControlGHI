@@ -1071,50 +1071,89 @@ else:
       errors="coerce"
   ).fillna(0.0)
   
-  # Crear nuevas columnas en la base de aplicación para almacenar el valor unitario y total
+  # Crea (o reinicia) columnas de salida
   insumos_aplicacion["Valor Unidad"] = 0.0
   insumos_aplicacion["Total"] = 0.0
 
-
-  # Implementar la lógica FIFO
   for index, row in insumos_aplicacion.iterrows():
-    item = row["Item"]
-    cantidad_necesaria = row["Cantidad Comprada/Aplicada"]
+      item = row["Item"]
+      cantidad_necesaria = float(row["Cantidad Comprada/Aplicada"])
 
-    if cantidad_necesaria > 0:
-        # Filtrar inventario para este ítem
-        inventario_disponible = inventario[inventario["Item"] == item].copy()
+      if cantidad_necesaria <= 0:
+          continue
 
-        total_asignado = 0.0
-        valor_unitario_final = 0.0
+      # Lotes del ítem (mantiene índices del DF original)
+      inventario_disponible = inventario[inventario["Item"] == item]
 
-        for idx, inv_row in inventario_disponible.iterrows():
-            cantidad_disponible = inv_row["Cantidad Comprada/Aplicada"]
-            valor_unitario    = inv_row["Valor Unidad"]
+      total_asignado = 0.0
+      valor_unitario_final = None          # precio del último lote efectivamente consumido
+      ultimo_lote_idx_consumido = None     # índice del inventario original a sobregirar si falta
 
-            if cantidad_disponible <= 0:
-                continue
+      # 1) Consumir FIFO
+      for idx, inv_row in inventario_disponible.iterrows():
+          cantidad_disponible = float(inv_row["Cantidad Comprada/Aplicada"])
+          valor_unitario = float(inv_row["Valor Unidad"])
 
-            if cantidad_necesaria <= cantidad_disponible:
-                # Cubrir toda la necesidad con este lote
-                total_asignado += cantidad_necesaria * valor_unitario
-                valor_unitario_final = valor_unitario
-                inventario.at[idx, "Cantidad Comprada/Aplicada"] = (
-                    cantidad_disponible - cantidad_necesaria
-                )
-                cantidad_necesaria = 0.0
-                break
-            else:
-                # Consumir todo el lote y seguir
-                total_asignado += cantidad_disponible * valor_unitario
-                cantidad_necesaria -= cantidad_disponible
-                inventario.at[idx, "Cantidad Comprada/Aplicada"] = 0.0
-                valor_unitario_final = valor_unitario
+          if cantidad_disponible <= 0:
+              continue
 
-        # Guardar resultados en insumos_aplicacion
-        insumos_aplicacion.at[index, "Valor Unidad"] = valor_unitario_final
-        insumos_aplicacion.at[index, "Total"] = total_asignado
+          if cantidad_necesaria <= cantidad_disponible:
+              # Cubre todo con este lote
+              total_asignado += cantidad_necesaria * valor_unitario
+              valor_unitario_final = valor_unitario
+              inventario.at[idx, "Cantidad Comprada/Aplicada"] = cantidad_disponible - cantidad_necesaria
+              ultimo_lote_idx_consumido = idx
+              cantidad_necesaria = 0.0
+              break
+          else:
+              # Agota el lote y continúa
+              total_asignado += cantidad_disponible * valor_unitario
+              cantidad_necesaria -= cantidad_disponible
+              inventario.at[idx, "Cantidad Comprada/Aplicada"] = 0.0
+              valor_unitario_final = valor_unitario
+              ultimo_lote_idx_consumido = idx  # este fue el último usado
 
+      # 2) Si faltó inventario, valorar el faltante y dejar inventario negativo
+      if cantidad_necesaria > 0:
+          # Elegir valor unitario para el faltante:
+          # - Preferencia: el último lote que realmente consumimos (valor_unitario_final)
+          # - Si nunca consumimos (stock total=0), usa el valor del lote más reciente del ítem (si existe)
+          if valor_unitario_final is None:
+              if not inventario_disponible.empty:
+                  # Tomar el más reciente según el orden actual (si tienes FechaEntrada asc, el "más reciente" es el último)
+                  idx_mas_reciente = inventario_disponible.index[-1]
+                  valor_unitario_final = float(inventario.loc[idx_mas_reciente, "Valor Unidad"])
+                  ultimo_lote_idx_consumido = idx_mas_reciente
+              else:
+                  # Sin referencia alguna: no hay costo conocido (queda en 0.0)
+                  valor_unitario_final = 0.0
+                  ultimo_lote_idx_consumido = None
+
+          # Valorar el faltante con ese valor unitario
+          total_asignado += cantidad_necesaria * valor_unitario_final
+
+          # Dejar inventario NEGATIVO en el último lote usado (o de referencia)
+          if ultimo_lote_idx_consumido is not None:
+              inventario.at[ultimo_lote_idx_consumido, "Cantidad Comprada/Aplicada"] = (
+                  float(inventario.at[ultimo_lote_idx_consumido, "Cantidad Comprada/Aplicada"]) - cantidad_necesaria
+              )
+          # Si no existe ningún lote para ese ítem, podrías opcionalmente CREAR un lote "virtual" con cantidad negativa.
+          # Ejemplo (descomenta y ajusta tus columnas obligatorias):
+          # else:
+          #     nuevo = {
+          #         "Item": item,
+          #         "Cantidad Comprada/Aplicada": -cantidad_necesaria,
+          #         "Valor Unidad": valor_unitario_final,
+          #         # "FechaEntrada": pd.Timestamp.today(),  # si aplica
+          #     }
+          #     inventario = pd.concat([inventario, pd.DataFrame([nuevo])], ignore_index=True)
+
+          cantidad_necesaria = 0.0
+
+      # 3) Guardar resultados de la aplicación
+      insumos_aplicacion.at[index, "Valor Unidad"] = float(valor_unitario_final if valor_unitario_final is not None else 0.0)
+      insumos_aplicacion.at[index, "Total"] = float(total_asignado)
+      
   # Descartar de inventario las cantidades compradas o aplicadas iguales a 0
   inventario = inventario[inventario['Cantidad Comprada/Aplicada'] != 0]
   
@@ -1963,5 +2002,6 @@ clear_range(spreadsheet_id=spreadsheet_id, sheet_name='Costos Plantulas')
 
 # Escribir df en hoja Google Sheets
 write_range(spreadsheet_id=spreadsheet_id, sheet_name='Costos Plantulas', dataframe=costos_plantulas, include_headers=True)
+
 
 
