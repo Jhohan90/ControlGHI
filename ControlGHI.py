@@ -1809,7 +1809,16 @@ unique_quals['num_calidades'] = unique_quals.groupby(
 )['Clasificación/Calidad'].transform('nunique')
 
 # base por calidad (parte entera)
-unique_quals['base'] = (unique_quals['Cantidad Plantas Total'] // unique_quals['num_calidades']).astype(int)
+unique_quals['base'] = (
+    unique_quals['Cantidad Plantas Total'] // unique_quals['num_calidades']
+)
+
+unique_quals['base'] = (
+    unique_quals['base']
+        .replace([np.inf, -np.inf], np.nan)  # quitar infinitos
+        .fillna(0)                            # NaN → 0
+        .astype(int)
+)
 
 # calcular residuo total por grupo (lo que falta por asignar)
 remainders = (
@@ -2040,6 +2049,7 @@ clear_range(spreadsheet_id=spreadsheet_id, sheet_name='Costos Plantulas')
 
 # Escribir df en hoja Google Sheets
 write_range(spreadsheet_id=spreadsheet_id, sheet_name='Costos Plantulas', dataframe=costos_plantulas, include_headers=True)
+
 
 
 
