@@ -937,8 +937,16 @@ write_range(spreadsheet_id=spreadsheet_id, sheet_name='Inventario', dataframe=in
 # Filtrar respuestas por formulario
 respuestas_insumos = jornales_completo[jornales_completo['Marca temporal'] != '']
 
+# Agregar 'Siembra plantas' a la lista de exclusión para crear insumos nuevos
+excluir.append('Siembra plantas')
+
 # Crear insumos_nuevos de insumos_aplicacion
 insumos_nuevos = respuestas_insumos[respuestas_insumos['Clasificación/Tipo Actividad'].isin(excluir)].reset_index(drop=True)
+
+# Descartar filas donde la clasificación/tipo de actividad sea siembra plantas y Cantidad usada por item sea vacía o sea null
+insumos_nuevos = insumos_nuevos[~((insumos_nuevos['Clasificación/Tipo Actividad']=='Siembra plantas')
+                                  & ((insumos_nuevos['Cantidad Usada por Item'] == '')
+                                    |(insumos_nuevos['Cantidad Usada por Item'].isnull())))]
 
 # Descartar lo que item este vacio
 insumos_nuevos = insumos_nuevos[insumos_nuevos['Item'] != '']
